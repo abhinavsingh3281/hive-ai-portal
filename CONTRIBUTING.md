@@ -12,7 +12,7 @@ Thank you for your interest in contributing! This document covers how to get inv
 ## Development setup
 
 ```bash
-git clone https://github.com/abhinavsingh3281/hive-ai-portal.git
+git clone https://github.com/abhinavsingh3281/hive-ai-portal
 cd hive-ai-portal
 docker run -d --name hive-postgres -p 5432:5432 \
   -e POSTGRES_DB=aisc -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres \

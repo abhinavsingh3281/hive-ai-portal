@@ -39,13 +39,13 @@ You create a company, set goals, assign work items — the agents take it from t
 
 **macOS / Linux:**
 ```bash
-git clone https://github.com/abhinavhissar/aisc.git && cd aisc
+git clone https://github.com/abhinavsingh3281/hive-ai-portal.git && cd aisc
 chmod +x install.sh && ./install.sh
 ```
 
 **Windows (PowerShell):**
 ```powershell
-git clone https://github.com/abhinavhissar/aisc.git; cd aisc
+git clone https://github.com/abhinavsingh3281/hive-ai-portal.git; cd aisc
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
@@ -219,7 +219,7 @@ aisc/
 
 ```bash
 # 1. Clone
-git clone https://github.com/abhinavhissar/aisc.git
+git clone https://github.com/abhinavsingh3281/hive-ai-portal.git
 cd aisc
 
 # 2. Start Postgres
