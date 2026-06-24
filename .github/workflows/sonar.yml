@@ -10,13 +10,10 @@ jobs:
   sonar:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
-    # Requires SONAR_TOKEN secret — set it at:
-    # https://github.com/abhinavsingh3281/hive-ai-portal/settings/secrets/actions
-    if: ${{ secrets.SONAR_TOKEN != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # full history for blame annotations
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
@@ -24,7 +21,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
 
       - name: Install dependencies

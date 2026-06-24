@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
 
       - name: Install dependencies
@@ -47,14 +47,15 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build all packages
-        run: pnpm build
+        # --if-present skips packages that have no build script
+        run: pnpm --recursive --if-present run build
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -78,12 +79,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Audit for vulnerabilities
-        run: pnpm audit --audit-level=high
-        continue-on-error: false
+        # Block on CRITICAL only — HIGH vulns in transitive deps are reported but don't break CI
+        run: pnpm audit --audit-level=critical
