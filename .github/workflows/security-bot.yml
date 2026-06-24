@@ -1,0 +1,242 @@
+name: Security Bot
+
+on:
+  schedule:
+    - cron: '0 6 * * *'    # 06:00 UTC
+    - cron: '0 18 * * *'   # 18:00 UTC  (every 12 hours)
+  workflow_dispatch:        # Allow manual trigger from Actions tab
+
+permissions:
+  contents: write           # Push to security-reports branch
+  security-events: write    # Upload SARIF results
+
+jobs:
+  daily-scan:
+    name: Daily Security Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout source code (master) ────────────────────────────────────────
+      - name: Checkout master
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Scan 1: npm dependency audit ─────────────────────────────────────────
+      - name: npm audit
+        run: pnpm audit --json > /tmp/audit.json 2>/dev/null || true
+
+      # ── Scan 2: Trivy CVE scan ────────────────────────────────────────────────
+      - name: Trivy CVE scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          format: json
+          output: /tmp/trivy.json
+          exit-code: '0'
+          ignore-unfixed: false
+
+      # ── Scan 3: Upload Trivy SARIF to Security tab ────────────────────────────
+      - name: Trivy SARIF upload
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: /tmp/trivy.sarif
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Upload Trivy to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: /tmp/trivy.sarif
+          category: trivy-daily
+
+      # ── Generate markdown report ──────────────────────────────────────────────
+      - name: Generate report
+        run: |
+          python3 - << 'PYEOF'
+          import json, os, re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          now = datetime.now(timezone.utc)
+          date_str = now.strftime('%Y-%m-%d')
+          dt_str   = now.strftime('%Y-%m-%d %H:%M UTC')
+
+          # ── Parse npm audit ───────────────────────────────────────────────────
+          try:
+              audit = json.loads(Path('/tmp/audit.json').read_text())
+              meta  = audit.get('metadata', {}).get('vulnerabilities', {})
+              a_crit  = meta.get('critical', 0)
+              a_high  = meta.get('high', 0)
+              a_mod   = meta.get('moderate', 0)
+              a_low   = meta.get('low', 0)
+              a_total = meta.get('total', 0)
+              items = []
+              for name, v in audit.get('vulnerabilities', {}).items():
+                  sev = v.get('severity', '')
+                  if sev in ('critical', 'high'):
+                      items.append(f"- **{sev.upper()}** `{name}` — {v.get('title', 'no title')}")
+              audit_detail = '\n'.join(items[:20]) or '*No critical/high vulnerabilities found.*'
+          except Exception as e:
+              a_crit = a_high = a_mod = a_low = a_total = 0
+              audit_detail = f'*Audit data unavailable ({e}).*'
+
+          # ── Parse Trivy ───────────────────────────────────────────────────────
+          try:
+              trivy     = json.loads(Path('/tmp/trivy.json').read_text())
+              all_vulns = [v for r in trivy.get('Results', [])
+                             for v in (r.get('Vulnerabilities') or [])]
+              t_crit = sum(1 for v in all_vulns if v.get('Severity') == 'CRITICAL')
+              t_high = sum(1 for v in all_vulns if v.get('Severity') == 'HIGH')
+              t_med  = sum(1 for v in all_vulns if v.get('Severity') == 'MEDIUM')
+              t_low  = sum(1 for v in all_vulns if v.get('Severity') == 'LOW')
+              top = [v for v in all_vulns if v.get('Severity') in ('CRITICAL', 'HIGH')][:25]
+              if top:
+                  rows = [
+                      '| Severity | CVE | Package | Installed | Fixed | Description |',
+                      '|----------|-----|---------|-----------|-------|-------------|',
+                  ]
+                  for v in top:
+                      title = (v.get('Title') or v.get('Description') or 'n/a')[:65].replace('|', '‖')
+                      rows.append(
+                          f"| {v.get('Severity')} | {v.get('VulnerabilityID','')} "
+                          f"| `{v.get('PkgName','')}` | {v.get('InstalledVersion','')} "
+                          f"| {v.get('FixedVersion') or '—'} | {title} |"
+                      )
+                  trivy_detail = '\n'.join(rows)
+              else:
+                  trivy_detail = '*No HIGH or CRITICAL CVEs found.*'
+          except Exception as e:
+              t_crit = t_high = t_med = t_low = 0
+              trivy_detail = f'*Trivy data unavailable ({e}).*'
+
+          # ── Overall status ────────────────────────────────────────────────────
+          if   a_crit > 0 or t_crit > 0: status = '🔴 CRITICAL'
+          elif a_high > 0 or t_high > 0: status = '🟠 HIGH RISK'
+          elif a_mod  > 0 or t_med  > 0: status = '🟡 MODERATE'
+          else:                           status = '🟢 CLEAN'
+
+          # ── Build report markdown ─────────────────────────────────────────────
+          report = f"""# 🔐 Security Report — {date_str}
+
+> **Scan time:** {dt_str}
+> **Repo:** [hive-ai-portal](https://github.com/abhinavsingh3281/hive-ai-portal) · branch `master`
+
+---
+
+## Overall Status: {status}
+
+| Scanner | Critical | High | Medium | Low |
+|---------|----------|------|--------|-----|
+| npm audit | {a_crit} | {a_high} | {a_mod} | {a_low} |
+| Trivy CVE  | {t_crit} | {t_high} | {t_med} | {t_low} |
+
+---
+
+## 📦 npm Dependency Audit
+
+**Total issues found:** {a_total}
+
+{audit_detail}
+
+---
+
+## 🛡️ CVE Scan (Trivy) — HIGH & CRITICAL
+
+{trivy_detail}
+
+---
+
+## 🔗 Resources
+
+- [Security tab](https://github.com/abhinavsingh3281/hive-ai-portal/security)
+- [Dependabot alerts](https://github.com/abhinavsingh3281/hive-ai-portal/security/dependabot)
+- [CodeQL results](https://github.com/abhinavsingh3281/hive-ai-portal/security/code-scanning)
+- [Actions run](https://github.com/abhinavsingh3281/hive-ai-portal/actions/workflows/security-bot.yml)
+
+---
+
+<sub>🤖 hive-security-bot · {dt_str}</sub>
+"""
+
+          Path('/tmp/sec').mkdir(exist_ok=True)
+          Path('/tmp/sec/report.md').write_text(report)
+
+          # Export env vars for subsequent steps
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              f.write(f'SCAN_DATE={date_str}\n')
+              f.write(f'SCAN_STATUS={status}\n')
+
+          print(f'Report generated — {status}')
+          PYEOF
+
+      # ── Commit report to security-reports branch ──────────────────────────────
+      - name: Publish to security-reports branch
+        run: |
+          git config user.name  "hive-security-bot[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Switch to the unprotected security-reports branch
+          git fetch origin
+          git checkout security-reports
+          git reset --hard origin/security-reports
+
+          # Write today's report
+          mkdir -p reports
+          cp /tmp/sec/report.md reports/${{ env.SCAN_DATE }}.md
+          cp /tmp/sec/report.md LATEST.md
+
+          # Keep only the most recent 90 daily reports
+          ls -t reports/*.md 2>/dev/null | tail -n +91 | xargs rm -f 2>/dev/null || true
+
+          # Regenerate INDEX.md via Python (avoids shell heredoc quoting issues)
+          python3 - << 'PYEOF'
+          import re
+          from pathlib import Path
+
+          reports = sorted(Path('reports').glob('*.md'), reverse=True)
+          lines = [
+              '# 📋 Security Report Index\n\n',
+              '| Date | Status |\n',
+              '|------|--------|\n',
+          ]
+          for p in list(reports)[:90]:
+              d = p.stem
+              content = p.read_text()
+              m = re.search(r'^## Overall Status: (.+)$', content, re.MULTILINE)
+              status = m.group(1).strip() if m else 'unknown'
+              lines.append(f'| [{d}](reports/{d}.md) | {status} |\n')
+          Path('INDEX.md').write_text(''.join(lines))
+          print(f'Index updated — {len(reports)} report(s)')
+          PYEOF
+
+          # Commit only if something changed
+          git add reports/ LATEST.md INDEX.md
+          if git diff --cached --quiet; then
+            echo "No changes — skipping commit."
+          else
+            git commit -m "security: daily scan ${{ env.SCAN_DATE }} — ${{ env.SCAN_STATUS }} [skip ci]"
+            git push origin security-reports
+            echo "Pushed: ${{ env.SCAN_DATE }} — ${{ env.SCAN_STATUS }}"
+          fi

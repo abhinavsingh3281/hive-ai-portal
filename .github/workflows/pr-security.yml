@@ -1,0 +1,152 @@
+name: PR Security
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+jobs:
+  # ── 1. PR title — conventional commits ──────────────────────────────────────
+  title:
+    name: PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            chore
+            refactor
+            test
+            ci
+            perf
+            security
+          requireScope: false
+
+  # ── 2. Branch name convention (skipped for dependabot / renovate bots) ──────
+  branch-name:
+    name: Branch Name
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]' && github.actor != 'renovate[bot]'
+    steps:
+      - name: Validate branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          PATTERN="^(feat|fix|docs|chore|refactor|test|ci|perf|security|hotfix)/.+"
+          if [[ ! "$BRANCH" =~ $PATTERN ]]; then
+            echo "❌ Branch '$BRANCH' must start with: feat/ fix/ docs/ chore/ refactor/ test/ ci/ perf/ security/ hotfix/"
+            exit 1
+          fi
+          echo "✅ Branch name OK: $BRANCH"
+
+  # ── 3. Secret detection in PR diff ──────────────────────────────────────────
+  secret-scan:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: GitLeaks — scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── 4. Dependency CVE check — block HIGH/CRITICAL new deps ──────────────────
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: always
+          warn-only: false
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
+
+  # ── 5. Trivy scan on PR diff ────────────────────────────────────────────────
+  trivy-pr:
+    name: Trivy Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy — HIGH & CRITICAL CVE scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-pr.sarif
+          exit-code: '0'
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-pr.sarif
+          category: trivy-pr
+
+  # ── 6. pnpm audit — fail on CRITICAL (skip for dependabot — it has its own) ──
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    if: github.actor != 'dependabot[bot]'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit — block on CRITICAL vulnerabilities
+        run: pnpm audit --audit-level=critical
+
+  # ── 7. PR size guard ─────────────────────────────────────────────────────────
+  size-check:
+    name: PR Size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Count changed lines
+        id: diff
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          LINES=$(git diff --stat "$BASE" "$HEAD" | tail -1 | grep -oP '\d+ insertion' | grep -oP '\d+' || echo 0)
+          echo "lines=$LINES" >> $GITHUB_OUTPUT
+          echo "Changed lines: $LINES"
+
+      - name: Warn on large PR
+        if: ${{ fromJson(steps.diff.outputs.lines) > 800 }}
+        run: |
+          echo "⚠️  This PR changes ${{ steps.diff.outputs.lines }} lines."
+          echo "   Consider splitting it into smaller, focused PRs for easier review."
+          echo "   Large PRs are harder to review securely — reviewers miss more."
+          # Warn only — don't block

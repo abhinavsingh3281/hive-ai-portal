@@ -1,0 +1,47 @@
+version: 2
+
+updates:
+  # ── npm / pnpm workspace ─────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    reviewers:
+      - abhinavsingh3281
+    labels:
+      - dependencies
+      - security
+    commit-message:
+      prefix: "chore"
+      include: scope
+    groups:
+      # Bundle all non-breaking updates into one PR per week
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+      # Each major version gets its own PR
+      major:
+        update-types:
+          - major
+
+  # ── GitHub Actions ───────────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    reviewers:
+      - abhinavsingh3281
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: "ci"
