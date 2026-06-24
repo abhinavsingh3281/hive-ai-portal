@@ -13,7 +13,7 @@
     "@aisc/adapters": "workspace:*",
     "@aisc/db": "workspace:*",
     "@aisc/types": "workspace:*",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "@fastify/cors": "^10.0.0",
     "@fastify/sensible": "^6.0.0",
     "@fastify/swagger": "^9.0.0",

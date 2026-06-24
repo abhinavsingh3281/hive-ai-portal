@@ -32,10 +32,12 @@ jobs:
             security
           requireScope: false
 
-  # ── 2. Branch name convention ────────────────────────────────────────────────
+  # ── 2. Branch name convention (skipped for dependabot / renovate) ───────────
   branch-name:
     name: Branch Name
     runs-on: ubuntu-latest
+    # Dependabot and Renovate use their own branch naming — skip the check
+    if: ${{ !startsWith(github.head_ref, 'dependabot/') && !startsWith(github.head_ref, 'renovate/') }}
     steps:
       - name: Validate branch name
         run: |
