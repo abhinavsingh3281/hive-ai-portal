@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
+.DS_Store
+
+# Local database (PGlite embedded, workspace files)
+.aisc/
+
+# Drizzle migrations meta (keep the SQL files, not the snapshot journal)
+drizzle/meta/
+
+# Build outputs
+packages/*/dist/
+server/dist/
+ui/dist/
+
+# Graphify knowledge graph output
+graphify-out/
+
+# Editor
+.vscode/settings.json
+.idea/

@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+  - 'server'
+  - 'ui'
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true

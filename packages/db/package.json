@@ -1,0 +1,28 @@
+{
+  "name": "@aisc/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/migrate.ts",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.3",
+    "drizzle-orm": "^0.38.0",
+    "postgres": "^3.4.0",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.29.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
