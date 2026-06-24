@@ -1,0 +1,58 @@
+name: PR Lint
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  # ── PR title must follow conventional commits ────────────────────────────────
+  title:
+    name: PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            chore
+            refactor
+            test
+            ci
+            perf
+            security
+          requireScope: false
+
+  # ── No secrets in diff ───────────────────────────────────────────────────────
+  no-secrets:
+    name: No Secrets in Diff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan PR diff for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Branch name convention ───────────────────────────────────────────────────
+  branch-name:
+    name: Branch Name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name
+        run: |
+          BRANCH="${{ github.head_ref }}"
+          PATTERN="^(feat|fix|docs|chore|refactor|test|ci|perf|security|hotfix)/.+"
+          if [[ ! "$BRANCH" =~ $PATTERN ]]; then
+            echo "❌ Branch name '$BRANCH' doesn't follow convention."
+            echo "   Use: feat/my-feature, fix/my-bug, docs/update, etc."
+            exit 1
+          fi
+          echo "✅ Branch name '$BRANCH' looks good."
