@@ -2,7 +2,8 @@ name: Security Bot
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # Daily at 06:00 UTC
+    - cron: '0 6 * * *'    # 06:00 UTC
+    - cron: '0 18 * * *'   # 18:00 UTC  (every 12 hours)
   workflow_dispatch:        # Allow manual trigger from Actions tab
 
 permissions:
